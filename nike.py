@@ -1,19 +1,35 @@
+import urllib
 import urllib2
 import json
 
-nike_data_uri = 'http://manufacturingmap.nikeinc.com/maps/export_json?'
-un_data_uri = 'http://data.un.org/Data.aspx?d=POP&f=tableCode%3a240'
+# TODO: Some cities have multiple factories. Combine these first
+# TODO: Fix matching between city / country naming
+
+nike_data_url = 'http://manufacturingmap.nikeinc.com/maps/export_json'
+un_data_base_url = 'https://api.scraperwiki.com/api/1.0/datastore/sqlite'
+un_data_querystr = {
+    'format': 'jsondict',
+    'name': 'city_population_by_sex_city_and_city_type_un_data',
+}
 
 # fetch Nike data
-nike_json = urllib2.urlopen(nike_data_uri).read()
-nike_data = json.loads(nike_json)
+nike_data = json.loads(urllib2.urlopen(nike_data_url).read())
 
-# number of workers per city
-z = {}
+# UN data base query
+un_data_query = "SELECT * FROM `swdata` WHERE LOWER(`Country or Area`) = '%s' AND LOWER(`City`) LIKE '%%%s%%' AND `Sex` = 'Both Sexes'"
+
+current_data = None
 for x in nike_data:
-    location = x['city'].lower().strip() + ', ' + x['country'].lower().strip()
-    if location in z:
-        z[location] += x['workers']
+    # populate current query
+    un_data_querystr['query'] = un_data_query % (x['country'].lower().encode('utf8'), x['city'].lower().encode('utf8'))
+    # generate current url
+    current_url = '%s?%s' % (un_data_base_url, urllib.urlencode(un_data_querystr))
+    # run it!
+    current_data = json.loads(urllib2.urlopen(current_url).read())
+    if current_data:
+        city_pop = float(current_data[0]['Value'].replace(',', ''))
+        city_workers_pct = 100. * float(x['workers']) / city_pop
+        print 'At least %f%% of the population of %s, %s are employed by Nike' % (city_workers_pct, x['city'], x['country'])
+        pass
     else:
-        z[location] = x['workers']
-
+        print 'No data for %s, %s' % (x['city'], x['country'])
